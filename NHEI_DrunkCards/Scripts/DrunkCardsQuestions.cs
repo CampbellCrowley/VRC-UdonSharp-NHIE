@@ -4,25 +4,47 @@ using VRC.SDKBase;
 using VRC.Udon;
 using UnityEngine.UI;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 
-public class QuestionButton1 : UdonSharpBehaviour {
+#if !COMPILER_UDONSHARP && UNITY_EDITOR
+using UdonSharpEditor;
+#endif
+
+public class DrunkCardsQuestions : UdonSharpBehaviour {
+  public int myVersion = 1;
+  [UdonSynced] public int currentVersion = 0;
+
   public Text textBox;
+  public Text usernameText;
   public Toggle masterToggle;
   public AudioSource clickSound;
   [UdonSynced] public int currentText = -1;
+  [UdonSynced] public string currentUsername = "";
   public int previousText = -1;
   [UdonSynced] public bool masterLocked = false;
+  [UdonSynced] public string template0 = "";
+  [UdonSynced] public string template1 = "";
+  [UdonSynced] public string template2 = "";
+
+  private float[] weights = {0.15f, 0.25f, 0.25f, 0.2f, 0.1f, 0.05f};
+
+  public Vector3 center = Vector3.zero;
+  public Vector3 size = Vector3.one;
+  private Bounds roomBounds;
+
+  private VRCPlayerApi[] playerBuf = new VRCPlayerApi[64];
+  private VRCPlayerApi[] playerBuf2 = new VRCPlayerApi[64];
 
   string[] questions = new[] {
     // Challenges:
-    "The others choose someone on your Discord friends list and create a message for you to message them with. You can choose to send the message or take 3 drinks.",
-    "Take two drinks and Impersonate someone in the room",
-    "Get down on one knee and propose to the person on your left or take 2 drinks",
-    "Take a drink and Sing everything you say for 1 round",
+    "The others choose someone on your Discord friends list and create a message for you to message them with. You can choose to send the message or take {2}",
+    "Take {2} and Impersonate someone in the room",
+    "Get down on one knee and propose to the person on your left or take {2}",
+    "Take a drink and Sing everything you say for {1}",
     "Take someone with you and go avatar shopping. When you come back everyone decides if they like your new avatar. If they don't like it take 2 shots",
-    "Talk in an accent for the next round and take a drink every time you forget",
-    "Attempt to dance for 30 seconds or take 2 drinks",
-    "Let the group give you a new avatar to use for 2 rounds or take 3 shots",
+    "Talk in an accent for the next {1} and take a drink every time you forget",
+    "Attempt to dance for 30 seconds or take {2}",
+    "Let the group give you a new avatar to use for {1} or take {2}",
     "Take a shot and do the worm, you don't have a say in this",
     "Take a shot and Curse like sailor for 20 seconds straight",
     "Put 2 ice cubes down your pants or take 2 shots",
@@ -34,7 +56,7 @@ public class QuestionButton1 : UdonSharpBehaviour {
     "Pick something in your room, spell it without opening your mouth, If someone gets it they can gift 2 shots, if no one guesses it you take two shots",
     "Take a shot and Jump up and down as high as you can go for a full minute",
     "Take a drink switch to an avatar of the opposite gender than you have now",
-    "Take a buddy shot with the person in front of you and switch avatars",
+    "Take a buddy shot with {0} and switch avatars",
     "For the next round take only water shots",
     // Truths:
     "Answer the truth or take a shot: What's your dream first date?",
@@ -66,7 +88,7 @@ public class QuestionButton1 : UdonSharpBehaviour {
     "Answer the truth or take a shot: What has been your most embarrassing moment so far?",
     "Answer the truth or take a shot: What's the last thing you Googled?",
     // Story:
-    "Tell us about the last dream you can remember or take 2 drinks",
+    "Tell us about the last dream you can remember or take {2}",
     "Take a drink and tell us some words of wisdom",
     "Take a drink and tell us about someone you'll always remember?",
     "Take a buddy shot and have the other person tell you their favorite memory of you",
@@ -97,7 +119,7 @@ public class QuestionButton1 : UdonSharpBehaviour {
     "Take a drink and Would you rather have everything you draw become real but be permanently terrible at drawing or be able to fly but only as fast as you can walk?",
     "Take a drink and Would you rather thirty butterflies instantly appear from nowhere every time you sneeze or one very angry squirrel appears from nowhere every time you cough?",
     "Take a drink and Would you rather be able to control fire or water",
-    "Take a drink and Would you rather have a bottomless box of Legos or a bottomless gas tank?",
+    "Take a drink and Would you rather have a bottomless box of LEGOs or a bottomless gas tank?",
     "Take a drink and Would you rather be lost in a bad part of town or lost in the forest?",
     "Take a drink and Would you rather be completely invisible for one day or be able to fly for one day?",
     "Take a drink and Would you rather have amazingly fast typing/texting speed or be able to read ridiculously fast?",
@@ -123,7 +145,6 @@ public class QuestionButton1 : UdonSharpBehaviour {
     // Drunk Pirate
     "If yuo cna raed tihs tehn dinrk",
     "Drink if you can read this",
-    "·ʞuᴉɹp uǝɥʇ sᴉɥʇ pɐǝɹ uɐ�\" noʎ ɟI",
     "Anyone on their phone right now must drink",
     "Think of a number from 1-10, the other players must go clockwise guessing the number, whoever gets it correct can choose someone to drink",
     "Everyone stand up, the last person standing must drink",
@@ -180,7 +201,7 @@ public class QuestionButton1 : UdonSharpBehaviour {
     "Tell everyone your favorite hobby then drink",
     "Stoners drink",
     "The player on your right must tell you a joke, you must decide if it's good enough, if it's not they must drink",
-    "You cannot swear for 3 rounds. If you swear then you must drink",
+    "You cannot swear for {1}. If you swear then you must drink",
     "Blue eyed players drink",
     "Command each player to do anything you want, if they cannot they must drink",
     "Drink if you can't remember your last card",
@@ -309,7 +330,7 @@ public class QuestionButton1 : UdonSharpBehaviour {
     "On the count of three, all players must show a number on their hand from one to five, any players with the same number must drink",
     "All players start drinking and can't stop until you stop",
     "The girl with the shortest hair must drink",
-    "Have a staring competition with the person in front of you, the loser must drink",
+    "Have a staring competition with {0}, the loser must drink",
     "Anyone drinking vodka must drink",
     "Fill up your cup and then down it",
     "Everyone look at the ground and on the count of three look up and look at another player's eyes. Any players making eye contact with each other must drink",
@@ -355,7 +376,7 @@ public class QuestionButton1 : UdonSharpBehaviour {
     "Everyone looking at this card must drink",
     "Lie on your back and drink",
     "Starting with you go round clockwise naming US States, the first to repeat one or not be able to think of one must drink",
-    "Anyone who touches the floor for one round must drink",
+    "For one round: anyone who touches the floor must drink",
     "Stay completely still like a statue for one round",
     "Everyone choose which side they prefer, Red or Blue, the smallest side must all drink",
     "Drink twice",
@@ -373,7 +394,7 @@ public class QuestionButton1 : UdonSharpBehaviour {
     "Choose heads or tails and then flip a coin, if correct then everyone except you drinks, if incorrect then you drink",
     "You choose which player is best dressed, they must drink",
     "You must not speak English for one round",
-    "You can pick a word that is banned for two rounds, if anyone says this word they must drink",
+    "You can pick a word that is banned for {1}, if anyone says this word they must drink",
     "Take a selfie with the player on your right and then both drink",
     "Everyone down their drinks",
     "If your drink is mixed then take a drink",
@@ -397,10 +418,10 @@ public class QuestionButton1 : UdonSharpBehaviour {
     "Have you ever been to a strip club?",
     "If you could make one wish right this second, what would it be?",
     // Random Stuff 
-    "Call your crush and explain the rules of monopoly to him/her",
-    "Whenever someone says \"like\" you must say \"there we go again\" for (#) of rounds.",
-    "Everything you say for the next (#) rounds must be sung to the tune of \"HappyBirthday\".",
-    "Pretend to be the person to your right for (#) of rounds?",
+    "Call your crush and explain the rules of Monopoly to them",
+    "Whenever someone says \"like\" you must say \"there we go again\" for {1}.",
+    "Everything you say for the next {1} must be sung to the tune of \"Happy Birthday\".",
+    "Pretend to be the person to your right for {1}.",
     "Talk without closing your mouth.",
     "Talk to a pillow like it's your crush.",
     "Have a full conversation with yourself in a mirror.",
@@ -415,7 +436,7 @@ public class QuestionButton1 : UdonSharpBehaviour {
     "What do you like most and least about your own appearance?",
     "What do you like most and least about your personality?",
     "Tell a Drunken story.",
-    "A fact of the last person u have kissed.",
+    "A fact of the last person you have kissed.",
     "Favorite TV show.",
     "What are you wearing right now?",
     "Favorite song.",
@@ -432,9 +453,9 @@ public class QuestionButton1 : UdonSharpBehaviour {
     "Are peanuts made into jam?",
     // GDoc Questions
     "Would you go out with an older woman?",
-    "Would you make out with me for one minute?",
+    "Would you make out with {0} for one minute?",
     "Have you ever fallen in love at first sight?",
-    "What don't you like about me?",
+    "What don't you like about {0}?",
     "What is the most illegal thing you have ever done?",
     "Who has the best dance moves?",
     "What's the worst date you've ever had?",
@@ -457,7 +478,7 @@ public class QuestionButton1 : UdonSharpBehaviour {
     "What is your secret bad habit?",
     "Have you ever stalked someone via social media?",
     "Anyone who didn't drink last round, drink 2 times",
-    "Bark every time someone says your name for 1 round.",
+    "Bark every time someone says your name for {1}.",
     "Anyone that considers themselves a female, drink",
     "Choose a drinking buddy, drink together every time",
     "Tell everyone the story of the worst lie you ever told or drink 2 times",
@@ -501,7 +522,7 @@ public class QuestionButton1 : UdonSharpBehaviour {
     "Drink if: You're drinking beer",
     "Drink if: You've never had a bad hangover",
     "Drink if: You're a smoker",
-    "Drink if: You still get ID'd at the supermarket/�pub/�bars",
+    "Drink if: You still get ID'd at the supermarket/pub/bars",
     "Drink if: You can speak more than one language",
     "Drink if: You're the tallest in the room",
     "Drink if: You're the shortest in the room",
@@ -523,33 +544,32 @@ public class QuestionButton1 : UdonSharpBehaviour {
     "Say something you've never said before.",
     "Give someone in the room some words of advice.",
     "Drink and do something you wouldn't do while sober",
+    "{0}, {2}",
+    "Kiss {0}, or drink",
+    "Drink then compliment {0}",
+    "Drink then insult {0}",
+    "Stare at {0} for one round. If you fail: {2}",
   };
   
   public void Start() {
-    Debug.Log(questions.Length + " Total Questions loaded (Drunk)");
+    Debug.Log(questions.Length + " Total Questions loaded (DrunkCards)");
+    roomBounds = new Bounds(center + transform.position, size);
     masterToggle.isOn = masterLocked;
+    if (Networking.LocalPlayer.isMaster) {
+      currentUsername = Networking.LocalPlayer.displayName;
+      currentVersion = myVersion;
+      usernameText.text = currentUsername;
+      RequestSerialization();
+    }
+    UpdateTextBox(currentText);
   }
   public override void OnDeserialization() {
-    if (previousText != currentText) {
-      Debug.Log("DrunkCards updated: " + currentText + " " + (currentText < 0 ? "" : questions[currentText]));
-    }
     if (masterToggle.isOn != masterLocked) {
       Debug.Log("DrunkCards Master Lock: " + masterLocked + " (am master: " + Networking.LocalPlayer.isMaster + ")");
     }
-    previousText = currentText;
-    if (currentText >= 0) {
-      textBox.text = questions[currentText];
-    } else if (currentText == -1) {
-      textBox.text = "Click Random or take a shot.";
-    } else {
-      textBox.text = "";
-    }
     masterToggle.isOn = masterLocked;
-  }
-  public void Update() {
-    if (masterToggle.isOn != masterLocked) {
-      masterToggle.isOn = masterLocked;
-    }
+    usernameText.text = currentUsername;
+    UpdateTextBox(currentText);
   }
   public void ClickedRandom() {
     if (masterLocked && !Networking.LocalPlayer.isMaster) return;
@@ -557,13 +577,9 @@ public class QuestionButton1 : UdonSharpBehaviour {
       Networking.SetOwner(Networking.LocalPlayer, gameObject);
     }
     previousText = currentText = Random.Range(0, questions.Length);
-    if (currentText >= 0) {
-      textBox.text = questions[currentText];
-    } else if (currentText == -1) {
-      textBox.text = "Click Random or take a shot.";
-    } else {
-      textBox.text = "";
-    }
+    currentVersion = myVersion;
+    currentUsername = Networking.LocalPlayer.displayName;
+    UpdateTextBox(currentText);
     RequestSerialization();
   }
   public void ClickedClear() {
@@ -573,19 +589,119 @@ public class QuestionButton1 : UdonSharpBehaviour {
     }
     textBox.text = "";
     previousText = currentText = -2;
+    currentUsername = Networking.LocalPlayer.displayName;
     RequestSerialization();
   }
   public void ToggleMasterLock() {
     Debug.Log("Toggling Master Lock: I am Master (" + Networking.LocalPlayer.isMaster + "), currently (" + masterLocked + ")");
-    if (!Networking.LocalPlayer.isMaster) return;
+    if (!Networking.LocalPlayer.isMaster) {
+      if (masterToggle.isOn != masterLocked) masterToggle.isOn = masterLocked;
+      return;
+    }
     if (!Networking.IsOwner(gameObject)) {
       Networking.SetOwner(Networking.LocalPlayer, gameObject);
     }
     masterLocked = !masterLocked;
-    // masterToggle.isOn = masterLocked;
     Debug.Log("Toggling Master Lock Updated to (" + masterLocked + ")");
 
     RequestSerialization();
     if (clickSound != null) clickSound.PlayOneShot(clickSound.clip, 1.0f);
   }
+
+  private void UpdateTextBox(int currentText) {
+    string newText;
+    if (currentText >= 0) {
+      if (currentVersion != myVersion) {
+        Debug.Log($"DrunkCards version mismatch (Mine: {myVersion}, current: {currentVersion})");
+        textBox.text = $"Your game version does not match {currentUsername}. You will only be able to see prompts from people on the same version as you";
+        return;
+      }
+      if (previousText != currentText) {
+        Debug.Log("DrunkCards updated: " + currentText + " " + (currentText < 0 ? "" : questions[currentText]));
+      }
+      newText = questions[currentText];
+    } else if (currentText == -1) {
+      newText = "Click Random or take a shot.";
+    } else {
+      newText = "";
+    }
+
+    if (Networking.IsOwner(gameObject)) {
+      if (newText.Contains("{0}")) {
+        VRCPlayerApi[] players = PickPlayersInProximity(1);
+        int len = players.Length;
+        template0 = "";
+        if (len == 0) template0 = "someone";
+        for (int i = 0; i < len; ++i) {
+          template0 += players[i].displayName;
+          if (i < len - 1) template0 += ", ";
+          if (i > 0 && i == len - 2) template0 += "and ";
+        }
+      }
+      if (newText.Contains("{1}")) {
+        int num = GetWeightedRand();
+        template1 = $"{num} round";
+        if (num != 1) template1 += "s";
+      }
+      if (newText.Contains("{2}")) {
+        int num = GetWeightedRand();
+        template2 = $"{num} drink";
+        if (num != 1) template2 += "s";
+      }
+    }
+    newText = string.Format(newText, template0, template1, template2);
+
+    textBox.text = newText;
+  }
+  private int GetWeightedRand() {
+    float index = Random.value;
+    float sum = 0;
+    int num = 1;
+    for (int i = 0; i < weights.Length; ++i) {
+      if ((sum += weights[i]) <= index) {
+        num = i + 1;
+      } else {
+        break;
+      }
+    }
+    return num;
+  }
+
+  private VRCPlayerApi[] PickPlayersInProximity(int count) {
+    VRCPlayerApi.GetPlayers(playerBuf);
+    int numInProximity = 0;
+
+    foreach (VRCPlayerApi player in playerBuf) {
+      if (player == null) continue;
+      if (player.isLocal) continue;
+      Vector3 pos = player.GetPosition();
+      if (roomBounds.Contains(pos)) {
+        playerBuf2[numInProximity++] = player;
+      }
+    }
+
+    count = Mathf.Min(count, numInProximity);
+    VRCPlayerApi[] picked = new VRCPlayerApi[count];
+
+    for (; count > 0; --count) {
+      int rand = Random.Range(0, numInProximity);
+      picked[count - 1] = playerBuf2[rand];
+      for (int i = rand; i < numInProximity - 1; ++i) {
+        playerBuf2[i] = playerBuf2[i + 1];
+      }
+      --numInProximity;
+    }
+
+    return picked;
+  }
+
+#if !COMPILER_UDONSHARP && UNITY_EDITOR
+  void OnDrawGizmosSelected() {
+    this.UpdateProxy(ProxySerializationPolicy.RootOnly);
+    Gizmos.color = new Color(1f, 0f, 0f, 0.3f);
+    Gizmos.DrawCube(center + transform.position, size);
+    Gizmos.color = new Color(1f, 0f, 0f, 1f);
+    Gizmos.DrawWireCube(center + transform.position, size);
+  }
+#endif
 }
